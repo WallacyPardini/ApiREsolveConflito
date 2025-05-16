@@ -1,41 +1,30 @@
-const express = require("express")
-const dotenv = require("dotenv")
-const cors = require("cors")
-const axios = require("axios")
-const path = require("path")
+import axios from "axios"
 
-// Carregar variáveis de ambiente
-dotenv.config()
+export default async function handler(req, res) {
+  // Verificar método HTTP
+  if (req.method !== "POST") {
+    return res.status(405).json({ success: false, message: "Método não permitido" })
+  }
 
-// Verificar se a chave API está definida
-if (!process.env.V0_API_KEY) {
-  console.error("Erro: V0_API_KEY não está definida nas variáveis de ambiente.")
-  process.exit(1)
-}
-
-const app = express()
-const PORT = process.env.PORT || 3000
-
-// Configurar middlewares
-app.use(express.json({ limit: "1mb" }))
-app.use(cors())
-app.use(express.static(path.join(__dirname, "public")))
-
-// Middleware para validação básica de requisições
-const validateRequest = (req, res, next) => {
-  if (!req.body.code || !req.body.strategy) {
-    return res.status(400).json({
+  // Verificar se a chave API está definida
+  if (!process.env.V0_API_KEY) {
+    console.error("Erro: V0_API_KEY não está definida nas variáveis de ambiente.")
+    return res.status(500).json({
       success: false,
-      message: "O código com conflito e a estratégia são obrigatórios.",
+      message: "Erro de configuração do servidor. Verifique as variáveis de ambiente.",
     })
   }
-  next()
-}
 
-// Endpoint para resolver conflitos de merge
-app.post("/api/resolve-conflict", validateRequest, async (req, res) => {
   try {
     const { code, strategy } = req.body
+
+    // Validar os dados recebidos
+    if (!code || !strategy) {
+      return res.status(400).json({
+        success: false,
+        message: "O código com conflito e a estratégia são obrigatórios.",
+      })
+    }
 
     // Criando o prompt para a API v0
     const messages = [
@@ -87,9 +76,4 @@ app.post("/api/resolve-conflict", validateRequest, async (req, res) => {
       message: error.response?.data?.error || error.message || "Erro ao processar a requisição",
     })
   }
-})
-
-// Iniciar o servidor
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`)
-})
+}
