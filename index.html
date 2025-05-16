@@ -45,6 +45,10 @@
                                 <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true" id="spinner"></span>
                                 <span id="buttonText">Resolver Conflito</span>
                             </button>
+                            
+                            <button type="button" class="btn btn-outline-secondary ms-2" id="loadExampleBtn">
+                                <i class="bi bi-code-slash"></i> Carregar Exemplo
+                            </button>
                         </form>
                     </div>
                 </div>
@@ -53,9 +57,14 @@
                     <div class="card shadow-sm">
                         <div class="card-header d-flex justify-content-between align-items-center bg-light">
                             <h5 class="mb-0">Resultado</h5>
-                            <button class="btn btn-sm btn-outline-secondary" id="copyButton">
-                                <i class="bi bi-clipboard"></i> Copiar
-                            </button>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary me-2" id="downloadButton">
+                                    <i class="bi bi-download"></i> Baixar
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" id="copyButton">
+                                    <i class="bi bi-clipboard"></i> Copiar
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div id="fileName-display" class="mb-2 fw-bold"></div>
@@ -69,6 +78,10 @@
                 </div>
             </div>
         </div>
+        
+        <div class="mt-4 text-center text-muted">
+            <small>© 2023 - Resolvedor de Conflitos de Merge com v0</small>
+        </div>
     </div>
 
     <!-- Bootstrap 5 JS Bundle with Popper -->
@@ -76,6 +89,8 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const API_ENDPOINT = '/api/resolve-conflict'; // Endpoint do backend
+            
             const form = document.getElementById('conflictForm');
             const resultContainer = document.getElementById('resultContainer');
             const result = document.getElementById('result');
@@ -86,6 +101,8 @@
             const buttonText = document.getElementById('buttonText');
             const submitButton = document.getElementById('submitButton');
             const copyButton = document.getElementById('copyButton');
+            const downloadButton = document.getElementById('downloadButton');
+            const loadExampleBtn = document.getElementById('loadExampleBtn');
             
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
@@ -100,65 +117,32 @@
                 errorAlert.classList.add('d-none');
                 
                 const fileName = document.getElementById('fileName').value;
-                const conflictCode = document.getElementById('conflictCode').value;
+                const code = document.getElementById('conflictCode').value;
                 const strategy = document.getElementById('strategy').value;
                 
                 try {
-                    // Construir o prompt para o v0
-                    const messages = [
-                        {
-                            role: "system",
-                            content: "Você é um assistente de desenvolvimento responsável por resolver conflitos de merge em códigos. Receba trechos de código conflitado e retorne o código resolvido de acordo com a estratégia especificada: preferir HEAD, preferir Incoming ou combinar."
-                        },
-                        {
-                            role: "user",
-                            content: `Resolva o seguinte código conflitado utilizando a estratégia ${strategy}:\n\n${conflictCode}`
-                        }
-                    ];
-                    
-                    // Fazer a requisição para a API da OpenAI (que seria substituída pela API do v0 em um ambiente real)
-                    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    // Fazer a requisição para o backend
+                    const response = await fetch(API_ENDPOINT, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer sk-...' // Em um ambiente real, isso seria uma variável de ambiente
+                            'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({
-                            model: "gpt-3.5-turbo",
-                            messages: messages,
-                            temperature: 0.2,
-                            max_tokens: 2000
+                        body: JSON.stringify({ 
+                            code,
+                            strategy
                         })
                     });
                     
-                    if (!response.ok) {
-                        // Se a API falhar, usamos nossa implementação local para demonstração
-                        console.log("Usando resolução local como fallback");
-                        const resolvedCode = resolveConflictLocally(conflictCode, strategy);
-                        
-                        // Exibir o resultado
-                        fileNameDisplay.textContent = fileName;
-                        result.textContent = resolvedCode;
-                        resultContainer.classList.remove('d-none');
-                        
-                        // Rolar para o resultado
-                        resultContainer.scrollIntoView({ behavior: 'smooth' });
-                        return;
-                    }
-                    
                     const data = await response.json();
                     
-                    if (data && data.choices && data.choices[0] && data.choices[0].message) {
-                        let resolvedCode = data.choices[0].message.content;
-                        
-                        // Limpar qualquer formatação markdown que possa estar na resposta
-                        resolvedCode = resolvedCode.replace(/```[\s\S]*?```/g, function(match) {
-                            return match.replace(/```[\w]*\n|```$/g, '');
-                        });
-                        
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Erro ao processar a requisição');
+                    }
+                    
+                    if (data.success && data.resolvedCode) {
                         // Exibir o resultado
                         fileNameDisplay.textContent = fileName;
-                        result.textContent = resolvedCode;
+                        result.textContent = data.resolvedCode;
                         resultContainer.classList.remove('d-none');
                         
                         // Rolar para o resultado
@@ -167,25 +151,12 @@
                         throw new Error('A resposta não contém os dados esperados');
                     }
                 } catch (error) {
-                    console.error("Erro na API, usando resolução local:", error);
+                    // Exibir mensagem de erro
+                    errorMessage.textContent = error.message;
+                    errorAlert.classList.remove('d-none');
                     
-                    try {
-                        // Implementação local como fallback
-                        const resolvedCode = resolveConflictLocally(conflictCode, strategy);
-                        
-                        // Exibir o resultado
-                        fileNameDisplay.textContent = fileName;
-                        result.textContent = resolvedCode;
-                        resultContainer.classList.remove('d-none');
-                        
-                        // Rolar para o resultado
-                        resultContainer.scrollIntoView({ behavior: 'smooth' });
-                    } catch (localError) {
-                        // Se até mesmo a resolução local falhar
-                        errorMessage.textContent = "Não foi possível resolver o conflito. Verifique o formato do código.";
-                        errorAlert.classList.remove('d-none');
-                        errorAlert.scrollIntoView({ behavior: 'smooth' });
-                    }
+                    // Rolar para o erro
+                    errorAlert.scrollIntoView({ behavior: 'smooth' });
                 } finally {
                     // Restaurar botão
                     spinner.classList.add('d-none');
@@ -193,38 +164,6 @@
                     submitButton.disabled = false;
                 }
             });
-            
-            // Função para resolver conflitos localmente (implementação simples para demonstração)
-            function resolveConflictLocally(conflictCode, strategy) {
-                // Expressão regular para encontrar blocos de conflito
-                const conflictRegex = /(<<<<<<< HEAD\n)([\s\S]*?)(=======\n)([\s\S]*?)(>>>>>>>.*\n)/g;
-                
-                // Resolver com base na estratégia
-                let resolvedCode = conflictCode;
-                
-                if (strategy === "preferir HEAD") {
-                    // Manter apenas o código do HEAD
-                    resolvedCode = conflictCode.replace(conflictRegex, (match, head, headContent, separator, incomingContent, end) => {
-                        return headContent;
-                    });
-                } else if (strategy === "preferir Incoming") {
-                    // Manter apenas o código do Incoming
-                    resolvedCode = conflictCode.replace(conflictRegex, (match, head, headContent, separator, incomingContent, end) => {
-                        return incomingContent;
-                    });
-                } else if (strategy === "combinar") {
-                    // Tentativa simples de combinar (na prática, isso seria mais sofisticado)
-                    resolvedCode = conflictCode.replace(conflictRegex, (match, head, headContent, separator, incomingContent, end) => {
-                        // Remover duplicatas se houver linhas idênticas
-                        const headLines = headContent.split('\n');
-                        const incomingLines = incomingContent.split('\n');
-                        const combinedLines = [...new Set([...headLines, ...incomingLines])];
-                        return combinedLines.join('\n');
-                    });
-                }
-                
-                return resolvedCode;
-            }
             
             // Funcionalidade de copiar para a área de transferência
             copyButton.addEventListener('click', function() {
@@ -241,16 +180,25 @@
                 });
             });
             
-            // Adicionar exemplo de código para facilitar testes
-            document.getElementById('conflictForm').insertAdjacentHTML('beforeend', 
-                '<div class="mt-3">' +
-                '<button type="button" class="btn btn-outline-secondary btn-sm" id="loadExampleBtn">' +
-                '<i class="bi bi-code-slash"></i> Carregar Exemplo' +
-                '</button>' +
-                '</div>'
-            );
+            // Funcionalidade para baixar o arquivo
+            downloadButton.addEventListener('click', function() {
+                const fileName = document.getElementById('fileName').value || 'codigo_resolvido.txt';
+                const content = result.textContent;
+                
+                const element = document.createElement('a');
+                element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content));
+                element.setAttribute('download', fileName);
+                
+                element.style.display = 'none';
+                document.body.appendChild(element);
+                
+                element.click();
+                
+                document.body.removeChild(element);
+            });
             
-            document.getElementById('loadExampleBtn').addEventListener('click', function() {
+            // Carregar exemplo de código
+            loadExampleBtn.addEventListener('click', function() {
                 document.getElementById('fileName').value = 'Program.cs';
                 document.getElementById('conflictCode').value = 
 `using System;
