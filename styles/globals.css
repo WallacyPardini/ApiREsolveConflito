@@ -97,7 +97,6 @@ body {
       Helvetica Neue, sans-serif;
   }
   * {
-    @apply border-border;
     box-sizing: border-box;
   }
   body {
