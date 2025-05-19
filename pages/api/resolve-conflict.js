@@ -1,9 +1,27 @@
 import axios from "axios"
 
 export default async function handler(req, res) {
+  // Configurar CORS
+  res.setHeader("Access-Control-Allow-Credentials", true)
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT")
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+  )
+
+  // Lidar com requisições OPTIONS (preflight)
+  if (req.method === "OPTIONS") {
+    res.status(200).end()
+    return
+  }
+
   // Verificar método HTTP
   if (req.method !== "POST") {
-    return res.status(405).json({ success: false, message: "Método não permitido" })
+    return res.status(405).json({
+      success: false,
+      message: `Método ${req.method} não permitido. Use POST.`,
+    })
   }
 
   // Verificar se a chave API está definida
@@ -17,6 +35,9 @@ export default async function handler(req, res) {
 
   try {
     const { code, strategy } = req.body
+
+    // Log para debug
+    console.log("Recebido:", { strategy, codeLength: code?.length })
 
     // Validar os dados recebidos
     if (!code || !strategy) {
@@ -39,36 +60,65 @@ export default async function handler(req, res) {
       },
     ]
 
-    // Fazendo a requisição para a API do v0
-    const response = await axios.post(
-      "https://api.v0.dev/api/v1/generate",
-      {
-        messages: messages,
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.V0_API_KEY}`,
+    // Log para debug
+    console.log("Enviando requisição para a API v0...")
+
+    try {
+      // Fazendo a requisição para a API do v0
+      const response = await axios.post(
+        "https://api.v0.dev/api/v1/generate",
+        {
+          messages: messages,
         },
-      },
-    )
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.V0_API_KEY}`,
+          },
+          timeout: 30000, // 30 segundos de timeout
+        },
+      )
 
-    // Verificando a resposta
-    if (response.data && response.data.response) {
-      // Limpar qualquer possível formatação markdown
-      let resolvedCode = response.data.response
-      resolvedCode = resolvedCode.replace(/```[\s\S]*?```/g, (match) => match.replace(/```[\w]*\n|```$/g, ""))
+      // Log para debug
+      console.log("Resposta recebida da API v0")
 
-      // Enviar resposta
-      return res.json({
+      // Verificando a resposta
+      if (response.data && response.data.response) {
+        // Limpar qualquer possível formatação markdown
+        let resolvedCode = response.data.response
+        resolvedCode = resolvedCode.replace(/```[\s\S]*?```/g, (match) => match.replace(/```[\w]*\n|```$/g, ""))
+
+        // Enviar resposta
+        return res.status(200).json({
+          success: true,
+          resolvedCode,
+        })
+      } else {
+        throw new Error("A resposta da API não contém os dados esperados")
+      }
+    } catch (apiError) {
+      console.error("Erro na chamada à API v0:", apiError.message)
+
+      // Verificar se temos detalhes do erro da API
+      if (apiError.response) {
+        console.error("Detalhes do erro:", {
+          status: apiError.response.status,
+          data: apiError.response.data,
+        })
+      }
+
+      // Implementar resolução local como fallback
+      console.log("Usando resolução local como fallback")
+      const resolvedCode = resolveConflictLocally(code, strategy)
+
+      return res.status(200).json({
         success: true,
         resolvedCode,
+        source: "fallback",
       })
-    } else {
-      throw new Error("A resposta da API não contém os dados esperados")
     }
   } catch (error) {
-    console.error("Erro ao chamar a API v0:", error)
+    console.error("Erro geral:", error.message)
 
     // Enviar resposta de erro adequada
     return res.status(500).json({
@@ -76,4 +126,36 @@ export default async function handler(req, res) {
       message: error.response?.data?.error || error.message || "Erro ao processar a requisição",
     })
   }
+}
+
+// Função para resolver conflitos localmente (implementação simples para fallback)
+function resolveConflictLocally(conflictCode, strategy) {
+  // Expressão regular para encontrar blocos de conflito
+  const conflictRegex = /(<<<<<<< HEAD\n)([\s\S]*?)(=======\n)([\s\S]*?)(>>>>>>>.*\n)/g
+
+  // Resolver com base na estratégia
+  let resolvedCode = conflictCode
+
+  if (strategy === "preferir HEAD") {
+    // Manter apenas o código do HEAD
+    resolvedCode = conflictCode.replace(conflictRegex, (match, head, headContent, separator, incomingContent, end) => {
+      return headContent
+    })
+  } else if (strategy === "preferir Incoming") {
+    // Manter apenas o código do Incoming
+    resolvedCode = conflictCode.replace(conflictRegex, (match, head, headContent, separator, incomingContent, end) => {
+      return incomingContent
+    })
+  } else if (strategy === "combinar") {
+    // Tentativa simples de combinar (na prática, isso seria mais sofisticado)
+    resolvedCode = conflictCode.replace(conflictRegex, (match, head, headContent, separator, incomingContent, end) => {
+      // Remover duplicatas se houver linhas idênticas
+      const headLines = headContent.split("\n")
+      const incomingLines = incomingContent.split("\n")
+      const combinedLines = [...new Set([...headLines, ...incomingLines])]
+      return combinedLines.join("\n")
+    })
+  }
+
+  return resolvedCode
 }
