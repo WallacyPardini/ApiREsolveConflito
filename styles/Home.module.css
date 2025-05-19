@@ -213,22 +213,3 @@
     padding: 10px;
   }
 }
-
-export default {
-  container: 'container',
-    main: 'main',
-    footer: 'footer',
-    title: 'title',
-    description: 'description',
-    code: 'code',
-    grid: 'grid',
-    card: 'card',
-    logo: 'logo',
-    home: 'home',
-    formContainer: 'formContainer',
-    inputField: 'inputField',
-    submitButton: 'submitButton',
-    resultContainer: 'resultContainer',
-    error: 'error';
-}
-;\
